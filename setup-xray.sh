@@ -19,12 +19,20 @@ fi
 
 # Generate credentials
 UUID=$(cat /proc/sys/kernel/random/uuid)
-KEYS=$(docker run --rm ghcr.io/xtls/xray-core:latest xray x25519 2>/dev/null)
-PRIVATE_KEY=$(echo "$KEYS" | grep "Private key" | awk '{print $3}')
-PUBLIC_KEY=$(echo "$KEYS" | grep "Public key" | awk '{print $3}')
+KEYS=$(docker run --rm ghcr.io/xtls/xray-core:latest x25519 2>/dev/null)
+PRIVATE_KEY=$(echo "$KEYS" | grep "PrivateKey:" | awk '{print $2}')
+PUBLIC_KEY=$(echo "$KEYS" | grep "(PublicKey)" | awk '{print $3}')
 SHORT_ID=$(openssl rand -hex 8)
 
-SERVER_IP=$(curl -s ifconfig.me)
+# Force IPv4
+SERVER_IP=$(curl -4 -s ifconfig.me)
+
+# Validate keys
+if [ -z "$PRIVATE_KEY" ] || [ -z "$PUBLIC_KEY" ]; then
+  echo "ERROR: Не удалось сгенерировать ключи. Вывод x25519:"
+  echo "$KEYS"
+  exit 1
+fi
 
 # Create config
 mkdir -p /etc/xray
@@ -60,14 +68,14 @@ CONF
 # Stop old container if exists
 docker rm -f xray 2>/dev/null && echo "Старый контейнер удалён." || true
 
-# Run Xray
+# Run Xray (entrypoint is already 'xray', so just pass subcommand)
 docker run -d \
   --name xray \
   --restart unless-stopped \
   --network host \
   -v /etc/xray:/etc/xray \
   ghcr.io/xtls/xray-core:latest \
-  xray run -c /etc/xray/config.json
+  run -c /etc/xray/config.json
 
 sleep 2
 
